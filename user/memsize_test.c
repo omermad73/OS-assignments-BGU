@@ -10,5 +10,5 @@ int main(int argc, char *argv[])
     printf("the process is using %d bytes\n", memsize());
     free(buff);
     printf("the process is using after the realse is %d bytes\n",memsize());
-    exit(0);
+    exit(0, "");
 }

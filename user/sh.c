@@ -64,6 +64,7 @@ runcmd(struct cmd *cmd)
   struct listcmd *lcmd;
   struct pipecmd *pcmd;
   struct redircmd *rcmd;
+  char exit_msg[32];
 
   if(cmd == 0)
     exit(1, "");
@@ -94,7 +95,7 @@ runcmd(struct cmd *cmd)
     lcmd = (struct listcmd*)cmd;
     if(fork1() == 0)
       runcmd(lcmd->left);
-    wait(0);
+    wait(0, exit_msg);
     runcmd(lcmd->right);
     break;
 
@@ -118,8 +119,8 @@ runcmd(struct cmd *cmd)
     }
     close(p[0]);
     close(p[1]);
-    wait(0);
-    wait(0);
+    wait(0, "");
+    wait(0, "");
     break;
 
   case BACK:
@@ -147,6 +148,8 @@ main(void)
 {
   static char buf[100];
   int fd;
+  char exit_msg[32];
+  
 
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -167,7 +170,9 @@ main(void)
     }
     if(fork1() == 0)
       runcmd(parsecmd(buf));
-    wait(0);
+    wait(0, exit_msg);
+    if(exit_msg[0] != '\0')
+      fprintf(2, "%s\n", exit_msg);
   }
   exit(0, "");
 }

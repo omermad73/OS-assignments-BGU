@@ -145,6 +145,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  safestrcpy(p->exit_msg, "", sizeof(p->exit_msg));
 
   return p;
 }
@@ -168,6 +169,7 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->exit_msg[0] = 0;
   p->state = UNUSED;
 }
 
@@ -375,6 +377,12 @@ exit(int status, char* exit_msg)
   
   acquire(&p->lock);
 
+  if(exit_msg != 0) {
+    safestrcpy(p->exit_msg, exit_msg, sizeof(p->exit_msg));
+  } else {
+    safestrcpy(p->exit_msg, "", sizeof(p->exit_msg));
+  }
+
   p->xstate = status;
   p->state = ZOMBIE;
 
@@ -388,7 +396,7 @@ exit(int status, char* exit_msg)
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int
-wait(uint64 addr)
+wait(uint64 addr, uint64 exit_msg_addr)
 {
   struct proc *pp;
   int havekids, pid;
@@ -408,8 +416,8 @@ wait(uint64 addr)
         if(pp->state == ZOMBIE){
           // Found one.
           pid = pp->pid;
-          if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                  sizeof(pp->xstate)) < 0) {
+          if((addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate, sizeof(pp->xstate)) < 0)
+          || (exit_msg_addr != 0 && copyout(p->pagetable, exit_msg_addr, pp->exit_msg, sizeof(pp->exit_msg)) < 0)){
             release(&pp->lock);
             release(&wait_lock);
             return -1;
