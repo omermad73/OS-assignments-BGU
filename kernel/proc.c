@@ -689,3 +689,170 @@ procdump(void)
     printf("\n");
   }
 }
+
+int
+forkn(int n, int* pids)
+{
+  struct proc *p = myproc();
+
+    // 2. Validate n
+    if(n < 1 || n > 16)
+    return -1;
+
+  // 3. Allocate storage to keep track of the new child processes
+  struct proc *children[16];
+  int i, j;
+
+  // 4. Create n child processes
+  for(i = 0; i < n; i++){
+    // This basically parallels the existing "fork()" logic in xv6
+
+    if((children[i] = allocproc()) == 0){
+      // Child creation failed => clean up everything
+      for(j = 0; j < i; j++){
+        // freeproc(...) or do something equivalent to kill them
+        // since they are still in EMBRYO / haven't been put on run queue
+        freeproc(children[j]);
+      }
+      return -1;
+    }
+
+    // Copy the parent’s user memory
+    if(uvmcopy(p->pagetable, children[i]->pagetable, p->sz) < 0){
+      freeproc(children[i]);
+      for(j = 0; j < i; j++){
+        freeproc(children[j]);
+      }
+      return -1;
+    }
+    children[i]->sz = p->sz;
+
+    // Copy the parent’s trapframe, then set up the child’s return value
+    *(children[i]->trapframe) = *(p->trapframe);
+    // The child’s return value from forkn(...) => i+1
+    children[i]->trapframe->a0 = i+1;
+
+    // Inherit parent’s file descriptors, current working directory, etc.
+
+    for(j = 0; j < NOFILE; j++){
+      if(p->ofile[j]) children[i]->ofile[j] = filedup(p->ofile[j]);
+    }
+    children[i]->cwd = idup(p->cwd);
+
+    // Set child’s parent pointer, name, state, etc.
+    safestrcpy(children[i]->name, p->name, sizeof(p->name));
+
+    release(&children[i]->lock);
+    acquire(&wait_lock);
+    children[i]->parent = p;         // remember to hold p->lock if needed
+    release(&wait_lock);
+  }
+
+  // 5. If we got here, all children allocated successfully
+  //    => set them to RUNNABLE
+  for(i = 0; i < n; i++){
+    acquire(&children[i]->lock);
+    children[i]->state = RUNNABLE;  // or call "release" so that the scheduler can pick them up
+    release(&children[i]->lock);
+  }
+
+  // 6. Copy out the PIDs into the user array
+  // Parent sees the system call return 0, so a0 in parent is 0
+  // In child, we already set a0 = i+1
+  for(i = 0; i < n; i++){
+    int pid = children[i]->pid;
+    if(copyout(p->pagetable, (uint64)pids + i*sizeof(int),
+               (char*)&pid, sizeof(int)) < 0){
+      // If this fails, it’s typically a bad user pointer
+      // but you might decide how to handle partial failure
+      return -1;
+    }
+  }
+
+  return 0; // parent sees forkn(...) => 0
+}
+
+int
+waitall(int* n, int* statuses)
+{
+  struct proc *p = myproc();
+  int statuses_local[NPROC];  // store statuses in kernel space
+  int count = 0;
+  int total_children = 0;
+
+  // 1. Check if there are any children at all
+  //    If no children, we can exit right away
+  acquire(&wait_lock);
+  int havekids = 0;
+  for(struct proc *pp = proc; pp < &proc[NPROC]; pp++){
+    if(pp->parent == p){
+      havekids = 1;
+      break;
+    }
+  }
+  if(!havekids){
+    release(&wait_lock);
+    // no children => *n=0
+    if(copyout(p->pagetable,(uint64)n, (char*)&count, sizeof(count)) < 0)
+      return -1;
+    return 0;
+  }
+
+  // 2. Wait until all children become ZOMBIE
+  //    We'll repeatedly sleep() if we find any child not ZOMBIE
+  for(;;){
+    int all_zombie = 1; // assume all are ZOMBIE unless we see a RUNNABLE, RUNNING, etc.
+    count = 0;         // how many are in ZOMBIE state
+    // gather statuses
+    for(struct proc *pp = proc; pp < &proc[NPROC]; pp++){
+      if(pp->parent == p){
+        acquire(&pp->lock);
+        if(pp->state != ZOMBIE){
+          all_zombie = 0;
+          release(&pp->lock);
+        } else {
+          // child is ZOMBIE => gather its xstate
+          statuses_local[count] = pp->xstate; // store locally
+          count++;
+          release(&pp->lock);
+        }
+      }
+    }
+
+    if(all_zombie){
+      // Now we actually rewalk the proc table once more to free
+      // them (like wait does)
+      // Or do it in the same pass carefully
+      for(struct proc *pp = proc; pp < &proc[NPROC]; pp++){
+        if(pp->parent == p){
+          acquire(&pp->lock);
+          if(pp->state == ZOMBIE){
+            freeproc(pp);
+          }
+          release(&pp->lock);
+        }
+      }
+      release(&wait_lock);
+      break;   // exit the for(;;) loop
+    }
+
+    // not all ZOMBIE => sleep
+    sleep(p, &wait_lock);
+    // once we get woken up, re-loop and check again
+  }
+
+  total_children = count;
+
+  // 3. Copy out the number of children and the statuses
+  if(copyout(p->pagetable, (uint64)n, (char*)&total_children, sizeof(total_children)) < 0)
+    return -1;
+
+  for(int i=0; i<total_children; i++){
+    if(copyout(p->pagetable, (uint64)statuses + i*sizeof(int),
+               (char*)&statuses_local[i], sizeof(int)) < 0){
+      return -1;
+    }
+  }
+
+  return 0;
+}
