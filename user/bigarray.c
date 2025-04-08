@@ -2,7 +2,7 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 
-#define SIZE (1 << 16) // 65536
+#define SIZE (1 << 16)
 
 int
 main(int argc, char *argv[])
@@ -13,36 +13,33 @@ main(int argc, char *argv[])
     arr[i] = i;
   }
 
-  // number of processes to create
+  // creating n child processes
   int n = 4;
-  int pids[4];
+  int pids[n];
   int ret = forkn(n, pids);
   if(ret < 0){
-    printf("forkn(%d) failed!\n", n);
+    printf("forkn(%d) failed\n", n);
     exit(-1, "forkn error");
   }
 
+  // If we are a child
   if(ret > 0 && ret <= n){
-    // We are a child. ret is 1..4
-    int child_index = ret - 1; // 0..3
+    int child_index = ret - 1;
     // Each child handles a quarter of the array
     int start = (SIZE / n) * child_index;
     int end   = start + (SIZE / n);
 
-    long long partial_sum = 0;
+    int partial_sum = 0;
     for(i = start; i < end; i++){
       partial_sum += arr[i];
     }
 
-    // Print partial sum and exit with it
-    // Because exit status is only 32-bit in xv6, be sure partial_sum fits
-    // if partial_sum > 2^31, you'd do a trick or see assignment instructions
     printf("Child %d (PID %d): partial sum = %d\n", ret, getpid(), partial_sum);
-    exit((int)partial_sum, "");
+    exit(partial_sum, "");
   }
 
-  // Else ret == 0 => we are the parent
-  // Print child PIDs
+  // If we reeach here we are the parent
+  // Print the PIDs of the children
   printf("Parent process: created children with PIDs = ");
   for(i = 0; i < n; i++){
     printf("%d ", pids[i]);
@@ -51,10 +48,9 @@ main(int argc, char *argv[])
 
   // Wait for all child processes
   int child_count;
-  // We pass in a big statuses array of size NPROC if the assignment says so
-  int statuses[64];
+  int statuses[n];
   if(waitall(&child_count, statuses) < 0){
-    printf("waitall error!\n");
+    printf("waitall error\n");
     exit(-1, "waitall error");
   }
   if(child_count != n){
@@ -62,11 +58,10 @@ main(int argc, char *argv[])
     exit(-1, "");
   }
 
-  long long total_sum = 0;
+  // Sum all the partial sums
+  int total_sum = 0;
   for(i = 0; i < child_count; i++){
-    // Each status is the partial sum from a child
-    // Because we used exit(partial_sum, ""), we should get it here
-    total_sum += (long long)statuses[i];
+    total_sum += statuses[i];
   }
 
   printf("All children finished. Combined sum = %d\n", total_sum);
