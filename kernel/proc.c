@@ -12,6 +12,10 @@ struct proc proc[NPROC];
 
 struct proc *initproc;
 
+struct petersonLock pLockArr[NLOCK];
+
+
+
 int nextpid = 1;
 struct spinlock pid_lock;
 
@@ -56,6 +60,18 @@ procinit(void)
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
   }
+}
+
+void
+pLockinit(void)
+{
+ struct petersonLock *pLock;
+  for(pLock = pLockArr; pLock < &pLockArr[NLOCK]; pLock++) {
+        pLock->interested[0] = 0;
+        pLock->interested[1] = 0;
+        pLock->turn = 0;
+        pLock->active = 0;
+    }
 }
 
 // Must be called with interrupts disabled,
@@ -680,4 +696,98 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// Initialize the peterson lock
+int
+peterson_create(void)
+{
+  struct petersonLock *pLock;
+
+  for(int i = 0; i < NLOCK; i++) {
+    pLock = &pLockArr[i];
+    //acquire(&pLock->lk);
+    __sync_synchronize();
+    if(__sync_lock_test_and_set(&pLock->active, 1) == 0) {
+      pLock->interested[0] = 0;
+      pLock->interested[1] = 0;
+      pLock->turn = 0;
+      __sync_synchronize();
+      //release(&pLock->lk);
+      return i;
+    }
+    //release(&pLock->lk);
+  }
+  return -1;
+
+ /* for(pLock = pLockArr; pLock < &pLockArr[NLOCK]; pLock++) {
+    acquire(&pLock->lk);
+    if(pLock->held == 0) {
+      pLock->held = 1;
+      pLock->interested[0] = 0;
+      pLock->interested[1] = 0;
+      pLock->turn = 0;
+      
+      return (int)(pLock - pLockArr);
+    }
+    release(&pLock->lk);
+  }
+  return -1;
+}*/
+}
+
+int 
+peterson_acquire(int lock_id,int role){
+  struct petersonLock *pLock = &pLockArr[lock_id];
+  int other = 1 - role;
+
+  __sync_synchronize();
+  if (pLock->active == 0) 
+  {
+    return -1; 
+  }
+  __sync_lock_test_and_set(&pLock->interested[role], 1);
+  __sync_synchronize();
+  pLock->turn = role;//??
+  __sync_synchronize();
+
+  while(pLock->interested[other] == 1 && pLock->turn == role) {
+    yield();
+  }
+  return 0;
+}
+
+
+int
+peterson_release(int lock_id,int role){
+  if(lock_id < 0 || lock_id >= NLOCK || (role != 0 && role != 1)) {
+    return -1; // Invalid lock ID
+  }
+  struct petersonLock *pLock = &pLockArr[lock_id];
+  __sync_synchronize();
+  if (pLock->active == 0) {
+    return -1; // Lock not held
+  }
+  //acquire(&pLock->lk);
+  __sync_lock_release(&pLock->interested[role]);
+  __sync_synchronize();
+  //release(&pLock->lk);
+  return 0;
+}
+int 
+peterson_destroy(int lock_id){
+  if (lock_id < 0 || lock_id >= NLOCK) {
+    return -1; // Invalid lock ID
+  }
+  struct petersonLock *pLock = &pLockArr[lock_id];
+  __sync_synchronize();
+  if (pLock->active == 0) {
+    return -1; // Lock not held
+  }
+  //acquire(&pLock->lk);
+  __sync_lock_release(&pLock->active);
+  
+  __sync_synchronize();
+  //release(&pLock->lk);
+  return 0;
 }
