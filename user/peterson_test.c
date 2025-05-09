@@ -12,7 +12,7 @@ main(int argc, char *argv[])
     }
     int fork_ret = fork();
     int role = fork_ret > 0 ? 0 : 1;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 100; i++) {
         if (peterson_acquire(lock_id, role) < 0) {
         printf("Failed to acquire lock\n");
         exit(1);

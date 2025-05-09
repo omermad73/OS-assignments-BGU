@@ -61,7 +61,7 @@ tournament_create(int processes)
   //create processes and giving each of them unigue index
   int pid;
   for (int i = 1; i < N; i++) {
-    
+
     pid = fork();
     if (pid < 0)
       return -1;
@@ -76,13 +76,13 @@ tournament_create(int processes)
 
   // assighning for each process its locks and roles 
   //  for each level
-  for (int lvl = 0; lvl < L; lvl++) {
-      int idx = node_index(lvl, my_index);
-      my_locks[lvl] = all_locks[idx];
-      my_roles[lvl] = compute_role(lvl, my_index);
+  for (int l = 0; l < L; l++) {
+      int idx = node_index(l, my_index);
+      my_locks[l] = all_locks[idx];
+      my_roles[l] = compute_role(l, my_index);
   }
 
-  return my_index;    
+  return my_index;
 }
 
 int
