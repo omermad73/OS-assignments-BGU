@@ -684,15 +684,36 @@ procdump(void)
 struct proc*
 find_proc_by_pid(int pid) {
     struct proc *p;
+    int pid_curr;
     for(p = proc; p < &proc[NPROC]; p++) {
-        if(p->pid == pid) {
+        acquire(&p->lock);
+        pid_curr = p->pid;
+        release(&p->lock);
+        if(pid_curr == pid) {
             return p; // Found the process with the given pid
         }
+        
     }
     return 0; // Process not found
 }
 uint64 
 map_shared_pages(struct proc* src_proc, struct proc* dst_proc,uint64 src_va, uint64 size) {
+  // Lock the source and destination processes
+    struct proc *first, *second;
+    if (src_proc < dst_proc) {
+        first = src_proc;
+        second = dst_proc;
+    } else if (src_proc > dst_proc) {
+        first = dst_proc;
+        second = src_proc;
+    } else {
+        first = src_proc;
+        second = 0;
+    }
+
+    acquire(&first->lock);
+    if (second) acquire(&second->lock);
+
     pagetable_t src_pgt = src_proc->pagetable;
     pagetable_t dst_pgt = dst_proc->pagetable;
 
@@ -724,11 +745,19 @@ map_shared_pages(struct proc* src_proc, struct proc* dst_proc,uint64 src_va, uin
         if (dst_proc->sz < new_sz)
             dst_proc->sz = new_sz;
     }
+
+    // Release source and destination processes
+    if (second) release(&second->lock);
+    release(&first->lock);
+
     return dst_va_start + (src_va - va_start);
 }
                 
 uint64
 unmap_shared_pages(struct proc* p, uint64 addr, uint64 size) {
+  // Lock the process
+  acquire(&p->lock);
+
   uint64 align_addr = PGROUNDDOWN(addr);
   uint64 to_unmap = PGROUNDUP(addr + size);
 
@@ -740,5 +769,8 @@ unmap_shared_pages(struct proc* p, uint64 addr, uint64 size) {
   uvmunmap(p->pagetable, align_addr, npages, 0);
 
   p->sz = p->sz - (to_unmap - align_addr);
+
+  // Release the process
+  release(&p->lock);
   return 0;
 }
