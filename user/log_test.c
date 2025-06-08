@@ -20,7 +20,7 @@ static int itoadec(int x, char *s) {
 }
 
 // Message header: 16 bits for child index + 16 bits for message length
-typedef struct HEADER{
+typedef struct HEADER {
   uint16 child_idx;
   uint16 msg_len;
 } msg_header_t;
@@ -30,7 +30,7 @@ uint64 align4(uint64 addr) {
   return (addr + 3) & ~3;
 }
 
-// Write a message to the buffer atomically
+// Write a message to the buffer
 int write_message(char *buffer, uint16 child_idx, char *msg, int msg_len) {
   uint64 offset = 0;
   uint32 header = (child_idx << 16) | (msg_len & 0xFFFF);
@@ -40,7 +40,7 @@ int write_message(char *buffer, uint16 child_idx, char *msg, int msg_len) {
     uint32 old = __sync_val_compare_and_swap(hp, 0, header);
 
     if (old == 0) {
-      // We claimed the slot - now write the message
+      // claimed the slot - now write the message
       char *dest = buffer + offset + 4;
       for (int i = 0; i < msg_len; i++) {
         dest[i] = msg[i];
@@ -56,7 +56,6 @@ int write_message(char *buffer, uint16 child_idx, char *msg, int msg_len) {
 
   return 0; // Buffer full
 }
-
 
 int main() {
   // Allocate shared buffer using malloc
@@ -134,9 +133,8 @@ int main() {
       printf("Parent: mapped buffer to child %d at %p\n", i + 1, (void*)child_addr);
     }
   }
- 
 
-// sleep to allow children to write some messages
+  // sleep to allow children to write some messages
   sleep(3);
 
   // Scan and print messages
