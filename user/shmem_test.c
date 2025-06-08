@@ -42,7 +42,7 @@ int main() {
         uint64 size_after = (uint64)sbrk(0);
         printf("Child size after mapping: %d\n", (int)size_after);
 
-        // The mapped memory starts at our NEW sz minus the mapped size
+        // The mapped memory starts at our new sz minus the mapped size
         char *mapped_memory = (char*)(size_after - SHM_SIZE);
 
         printf("Child: trying to access mapped memory at %p\n", mapped_memory);

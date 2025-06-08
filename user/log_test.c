@@ -9,9 +9,9 @@
 // Convert decimal to string, returns length written
 static int itoadec(int x, char *s) {
   int n = x, len = 0;
-  do { len++; n /= 10; } while(n);  // count digits
+  do { len++; n /= 10; } while(n);
   s += len;
-  // write digits backwards
+
   do {
     *--s = '0' + (x % 10);
     x /= 10;
@@ -91,13 +91,9 @@ int main() {
       sleep(2);
       
       // Get buffer location from where parent mapped it
-      uint64 size_before = (uint64)sbrk(0);
-      char *shared_buffer = (char*)size_before;
+      uint64 size_after = (uint64)sbrk(0);
+      char *shared_buffer = (char*)(size_after - BUFFER_SIZE);
       printf("Child %d: buffer mapped at %p\n", child_idx, shared_buffer);
-      
-
-      
-     
 
       // Try writing messages
       for (int j = 0; j < MESSAGES_PER_CHILD; j++) {
@@ -124,6 +120,7 @@ int main() {
       }
       
       printf("Child %d: done\n", child_idx);
+      unmap_shared_pages(getpid(), (uint64)shared_buffer, BUFFER_SIZE);
       exit(0);
     }
   }
